@@ -2,9 +2,10 @@ import time
 
 import torch
 from torch import nn
-from typing import Any, Dict, List,Tuple
+from typing import Any, Dict, List, Tuple, Optional, Union, cast
 import numpy as np
 import gymnasium as gym
+from gymnasium.spaces import Box
 import torch.optim as optim
 import torch.nn.functional as F
 from collections import deque
@@ -16,15 +17,19 @@ from utils import ReplayBuffer
 from TrainEnv import HighSpeedTrainEnv
 
 class SoftActorCritic(nn.Module):
-    def __init__(self, env: gym.Env, hidden_size: List = None, lr_actor=3e-4, lr_critic=3e-4, lr_alpha=3e-4):
+    def __init__(self, env: gym.Env, hidden_size: Optional[List[int]] = None, lr_actor=3e-4, lr_critic=3e-4, lr_alpha=3e-4):
         super().__init__()
 
-        self.state_dim = env.observation_space.shape[0]
-        self.action_dim = env.action_space.shape[0]
+        # 确保环境的观察空间和动作空间是Box类型
+        obs_space = cast(Box, env.observation_space)
+        action_space = cast(Box, env.action_space)
+        
+        self.state_dim = obs_space.shape[0]
+        self.action_dim = action_space.shape[0]
 
         # Action scaling properties
-        self.action_high = torch.tensor(env.action_space.high[0], dtype=torch.float32)
-        self.action_low = torch.tensor(env.action_space.low[0], dtype=torch.float32)
+        self.action_high = torch.tensor(action_space.high[0], dtype=torch.float32)
+        self.action_low = torch.tensor(action_space.low[0], dtype=torch.float32)
         self.action_scale = (self.action_high - self.action_low) / 2.0
         self.action_bias = (self.action_high + self.action_low) / 2.0
 
@@ -133,7 +138,7 @@ class SoftActorCritic(nn.Module):
 
 
 class SACAgent:
-    def __init__(self, env: gym.Env, lr: float = 3e-4, gamma: float = 0.99, tau: float = 0.005, hidden_size: List = None, seed: int = 42):
+    def __init__(self, env: gym.Env, lr: float = 3e-4, gamma: float = 0.99, tau: float = 0.005, hidden_size: Optional[List[int]] = None, seed: int = 42):
         self.env = env
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -162,9 +167,12 @@ class SACAgent:
         self.gamma = gamma
         self.tau = tau
 
+        # 确保环境的观察空间和动作空间是Box类型
+        obs_space = cast(Box, env.observation_space)
+        action_space = cast(Box, env.action_space)
+        
         # 经验回放缓冲区
-        # self.buffer = deque(maxlen=1000000) # <- 替换这一行
-        self.buffer = ReplayBuffer(env.observation_space.shape[0], env.action_space.shape[0])
+        self.buffer = ReplayBuffer(obs_space.shape[0], action_space.shape[0])
 
         # ... 其他初始化代码 ..
 
@@ -311,7 +319,7 @@ class SACAgent:
         for episode in range(max_episodes):
             state, _ = self.env.reset(seed=self.seed + episode)
             # state：np.ndarray
-            episode_reward = 0
+            episode_reward: float = 0.0
             time_start= time.time()
             print("开始时间= ", time_start)
             for step in range(max_steps):
@@ -331,7 +339,7 @@ class SACAgent:
                 # 存进去的也是np.ndarray 数组
 
                 state = next_state
-                episode_reward += reward
+                episode_reward += float(reward)
                 total_steps += 1
 
                 # --- 核心修改在这里 ---
@@ -383,7 +391,7 @@ class SACAgent:
 
         for episode in range(n_episodes):
             state, info = test_env.reset(seed=self.seed + episode+1000)
-            episode_reward = 0
+            episode_reward: float = 0.0
             terminated, truncated = False, False
             distance = []
             speed = []
@@ -398,11 +406,12 @@ class SACAgent:
                 speed.append(info["当前速度 (m/s)"])
                 max_speed.append(info["当前最大能力曲线(m/s)"])
                 state = next_state
-                episode_reward += reward
+                episode_reward += float(reward)
+            print(f"最终时间={info["当前时间 (s)"]}")
             print(f"Test Episode {episode + 1}, Reward: {episode_reward:.2f}")
             plt.figure(episode)
             plt.plot(distance, speed, label='Actual Speed')
-            plt.plot(distance, max_speed, label='Max Allowed Speed', linestyle='--')  # 绘制最大速度曲线
+            plt.plot(distance, max_speed, label='Max Capability Speed', linestyle='--')  # 绘制最大能力曲线
             plt.xlabel('Distance (m)')
             plt.ylabel('Speed (m/s)')
             plt.title(f'Episode {episode + 1}')
@@ -420,9 +429,10 @@ if __name__ == "__main__":
     )
     max_steps = int(env.get_max_step())+1
     print(max_steps)
-    agent = SACAgent(env=env, lr=8e-4, gamma=0.88, tau=0.008, hidden_size=[256, 256], seed=42)
+    # 修复关键训练参数
+    agent = SACAgent(env=env, lr=1e-4, gamma=0.99, tau=0.005, hidden_size=[512, 512], seed=42)
 
-    agent.train(max_episodes=20000, max_steps=max_steps, start_steps=1000, batch_size=256, update_every=200, num_updates=8)
+    agent.train(max_episodes=500, max_steps=max_steps, start_steps=3000, batch_size=256, update_every=1, num_updates=1)
     env.close()
 
     # agent.load_model("pendulum_sac_train_final.pth")

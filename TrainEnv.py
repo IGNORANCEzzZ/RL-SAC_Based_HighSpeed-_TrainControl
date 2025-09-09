@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from numba import jit, njit, prange
 import numba as nb
 from numba.typed import Dict as NumbaDict
-from numba.types import float64, int64, boolean
+# from numba.types import float64, int64, boolean  # 移除未使用的导入
 
 
 # Numba JIT编译的核心计算函数
@@ -165,8 +165,8 @@ def fast_step_dynamics_numba(current_v, current_E, current_s, control_force,
 
     # 时间计算
     avg_v = (current_v + next_v) / 2
-    if avg_v <= 0.1:
-        dt = delta_step / 0.1
+    if avg_v <= 1:
+        dt = delta_step / 1
     else:
         dt = delta_step / avg_v
 
@@ -178,43 +178,82 @@ def fast_step_dynamics_numba(current_v, current_E, current_s, control_force,
 
 
 @njit(cache=True)
-def fast_reward_calculation_numba(current_v, current_t, target_time, punctuality_tolerance,
+def fast_reward_calculation_numba(current_v, current_s, current_t, target_time, punctuality_tolerance,
                                   speed_limit_mps, control_force, previous_control_force,
-                                  delta_step, is_terminated,total_distance,max_capability_speed):
-    """极速奖励计算（使用线路限速，尺度适中）"""
+                                  delta_step, is_terminated, total_distance, max_capability_speed,
+                                  remaining_distance, transmission_efficiency):
+    """修复后的奖励计算 - 大幅降低惩罚力度"""
     reward = 0.0
 
-    # 1. 进度奖励（最重要）- 鼓励前进
-    progress_reward = 10.0 * (delta_step / total_distance)
+    # 1. 基础进步奖励 - 鼓励向前运行
+    progress_reward = 5.0  # 增加基础奖励
     reward += progress_reward
 
-    # 2. 速度奖励 - 鼓励接近目标速度
-    target_speed = min(speed_limit_mps * 0.95, max_capability_speed * 0.9)
-    speed_error = abs(current_v - target_speed) / target_speed if target_speed > 0 else 0
-    speed_reward = 1.0 * np.exp(-2.0 * speed_error)  # 高斯型奖励
-    reward += speed_reward
+    # 2. 速度奖励 - 鼓励维持合理速度 
+    optimal_speed = min(speed_limit_mps * 0.9, max_capability_speed * 0.85)
+    if optimal_speed > 0:
+        speed_efficiency = min(current_v / optimal_speed, 1.0)
+        speed_reward = 3.0 * speed_efficiency  # 增加速度奖励
+        reward += speed_reward
 
-    # 3. 终点奖励
+    # 3. 轻微的时间压力指导（大幅降低惩罚）
+    expected_progress = current_s / total_distance
+    expected_time = target_time * expected_progress
+    time_diff = current_t - expected_time
+    
+    # 非常温和的时间压力
+    if abs(time_diff) > 300:  # 超过5分钟才开始惩罚
+        time_pressure_scale = min(abs(time_diff) / 1800.0, 1.0)  # 最多30分钟的缓慢惩罚
+        if time_diff < 0:  # 提前
+            time_pressure_reward = 0.5 * time_pressure_scale  # 轻微奖励
+        else:  # 延迟
+            time_pressure_reward = -1.0 * time_pressure_scale  # 轻微惩罚
+        reward += time_pressure_reward
+
+    # 4. 终点奖励（大幅降低惩罚）
     if is_terminated:
-        # 准点性奖励
-        time_error = 100*abs(current_t - target_time)/target_time
-        print("current_t",current_t)
-        print("target_time",target_time)
-        if time_error < 30:  # 30秒内算准点
-            reward += 1000.0
-        elif time_error < 60:
-            reward += 500.0
+        completion_reward = 100.0  # 增加完成奖励
+        
+        # 温和的准点性奖励
+        time_error = abs(current_t - target_time)
+        if time_error < 60:  # 1分钟内
+            punctuality_reward = 200.0
+        elif time_error < 300:  # 5分钟内
+            punctuality_reward = 100.0 
+        elif time_error < 900:  # 15分钟内
+            punctuality_reward = 50.0
         else:
-            reward += 100.0 - time_error
+            # 非常温和的惩罚
+            excess_minutes = (time_error - 900) / 60.0
+            punctuality_reward = -5.0 * excess_minutes  # 每分钟仅-5分惩罚
+        
+        # 温和的终点速度约束
+        speed_error_final = abs(current_v)
+        if speed_error_final > 15.0:  # 大于15m/s才惩罚
+            final_speed_penalty = 20.0 * (speed_error_final / 15.0)
+        else:
+            final_speed_penalty = 0.0
+        
+        reward += completion_reward + punctuality_reward - final_speed_penalty
 
-    # 4. 平稳性惩罚（减小系数）
-    force_change = abs(control_force - previous_control_force)/previous_control_force if previous_control_force > 0 else 0
-    reward -= 1 * force_change
+    # 5. 轻微的减速引导
+    if remaining_distance < 30000:  # 30km内开始减速
+        reasonable_speed = max(0.0, remaining_distance / 1000.0)  # 缓慢减速
+        if current_v > reasonable_speed + 20.0:  # 容忍度20m/s
+            decel_penalty = 1.0
+            reward -= decel_penalty
 
-    # 5. 超速惩罚
-    if current_v > speed_limit_mps:
-        overspeed_ratio = (current_v - speed_limit_mps) / speed_limit_mps if speed_limit_mps > 0 else 0
-        reward -= 10 * overspeed_ratio ** 2
+    # 6. 温和的安全约束
+    if current_v > speed_limit_mps:  
+        overspeed_ratio = (current_v - speed_limit_mps) / speed_limit_mps
+        overspeed_penalty = 10.0 * overspeed_ratio  # 线性惩罚，不再用指数
+        reward -= overspeed_penalty
+
+    # 7. 极轻微的平稳性要求
+    if previous_control_force != 0:
+        force_change_ratio = abs(control_force - previous_control_force) / abs(previous_control_force)
+        smoothness_penalty = min(force_change_ratio * 0.1, 0.5)  # 极小的平稳性惩罚
+        reward -= smoothness_penalty
 
     return reward
 
@@ -309,12 +348,13 @@ class HighSpeedTrainEnv(gym.Env):
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
 
         # 观测空间：定义智能体能看到的状态。这是一个关键设计点，需要包含足够的信息。
-        obs_dim = 4  # 增加线路限速（或能力曲线）作为目标速度参考
-        # 当前速度、当前位置、剩余距离、当前时间、剩余时间、所处限速段、所处坡度、所处曲线半径
+        # 修复观测空间：扩展到8维
+        obs_dim = 8  # 增加观测维度
+        # 当前速度、当前位置、剩余距离、当前时间、剩余时间、所处限速段、目标速度、时间压力
         # 修复：使用归一化的观测空间，避免数值过大
         self.observation_space = spaces.Box(
-            low=np.array([0,  0, 0, 0], dtype=np.float32),
-            high=np.array([1,  1, 1, 1], dtype=np.float32),
+            low=np.array([0,  0, 0, 0, 0, 0, 0, -1], dtype=np.float32),
+            high=np.array([1,  1, 1, 1, 1, 1, 1, 1], dtype=np.float32),
             shape=(obs_dim,),
             dtype=np.float32
         )
@@ -323,7 +363,7 @@ class HighSpeedTrainEnv(gym.Env):
         self._initialize_state()
 
         # 5. 用于记录运行轨迹的容器
-        self.trajectory_data = None
+        self.trajectory_data: Optional[list] = None
 
 
         # 优化：预计算扰动分布参数
@@ -421,7 +461,7 @@ class HighSpeedTrainEnv(gym.Env):
     def _extreme_optimization_setup(self):
         """极致优化设置"""
         # 预计算观测数组模板，避免重复创建
-        self._obs_template = np.zeros(4, dtype=np.float32)
+        self._obs_template = np.zeros(8, dtype=np.float32)  # 修改为8维
 
         # 预计算常用常数
         self._delta_step_reciprocal = 1.0 / self.delta_step
@@ -450,25 +490,25 @@ class HighSpeedTrainEnv(gym.Env):
         self.line_electric_phase = self.line_data['是否电分相'].values
 
         # 预计算速度限制（转换为m/s）
-        self.line_speed_limits_mps = self.line_speed_limits / 3.6
+        self.line_speed_limits_mps = np.array(self.line_speed_limits, dtype=float) / 3.6
 
     def _initialize_state(self):
         """初始化或重置列车运行的内部状态。"""
         # 列车状态包括：当前速度、当前位置、剩余距离、到期时间、剩余时间、前方一个点所处限速段、前方一个点所处坡度
         # 核心状态变量
-        self.current_v_mps = self.start_v_mps  # 当前速度 (v)
-        self.current_s_m = self.start_s_m  # 当前位置 (s)
-        self.left_s_m = abs(self.end_s_m - self.start_s_m)  # 剩余距离(s)
-        self.current_t_s = self.start_time_s  # 当前时间 (t)
-        self.current_control_force = self.start_force  # 当前时间使用的力(u)
-        self.current_E_j = (self.current_v_mps ** 2) / 2  # 当前动能
+        self.current_v_mps = float(self.start_v_mps)  # 当前速度 (v)
+        self.current_s_m = float(self.start_s_m)  # 当前位置 (s)
+        self.left_s_m = float(abs(self.end_s_m - self.start_s_m))  # 剩余距离(s)
+        self.current_t_s = float(self.start_time_s)  # 当前时间 (t)
+        self.current_control_force = float(self.start_force)  # 当前时间使用的力(u)
+        self.current_E_j = float((self.current_v_mps ** 2) / 2)  # 当前动能
         # 用于计算舒适度的上一时刻控制量
-        self.previous_control_force = self.start_force
+        self.previous_control_force = float(self.start_force)
 
         # 优化：缓存当前线路信息，避免重复查找
         self._current_line_info = None
 
-        self.max_capability_curves_mps = self.start_v_mps  # 当前速度 (v)
+        self.max_capability_curves_mps = float(self.start_v_mps)  # 当前速度 (v)
 
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
@@ -523,9 +563,10 @@ class HighSpeedTrainEnv(gym.Env):
         self.max_capability_curves_mps = fast_get_max_speed_at_position(self.max_capability_curves, self.max_capability_dis, next_s)
         line_speed_limit_mps = self.line_speed_limits_mps[self._current_line_idx]
 
-        reward = fast_reward_calculation_numba(self.current_v_mps, self.current_t_s, self.target_time,
+        reward = fast_reward_calculation_numba(self.current_v_mps, self.current_s_m, self.current_t_s, self.target_time,
                                                self.punctuality_tolerance, line_speed_limit_mps, control_force,
-                                               previous_control_force, self.delta_step, terminated,self.total_distance,self.max_capability_curves_mps)
+                                               previous_control_force, self.delta_step, terminated, self.total_distance, 
+                                               self.max_capability_curves_mps, self.left_s_m, self.transmission_efficiency)
 
         # 极速观测构建
         observation = self._ultra_fast_observation()
@@ -803,46 +844,88 @@ class HighSpeedTrainEnv(gym.Env):
     # ---------------------------------------------------------------------
 
     def _ultra_fast_action_mapping(self, action: np.ndarray, current_v: float) -> float:
-        """极速动作映射，修复动作到力的映射逻辑"""
-        # 检查电分相（使用缓存的索引）
+        """极速动作映射，通过智能约束而非强制约束实现安全控制"""
+        # 检查电分相
         if self.line_electric_phase[self._current_line_idx]:
             return 0.0
 
+        # 获取当前的约束信息
+        current_speed_limit_mps = self.line_speed_limits_mps[self._current_line_idx]
+        remaining_distance = self.left_s_m
+        
         # 使用预计算的力特性
         speed_kmh = current_v * self._mps_to_kmh
         traction_force = interpolate_force_characteristic_numba(self.traction_speeds, self.traction_forces, speed_kmh)
         braking_force = interpolate_force_characteristic_numba(self.braking_speeds, self.braking_forces, speed_kmh)
 
-        # 修复动作映射：action从-1到1映射到制动力到牵引力
-        if action.item() >= 0:
-            # 牵引：action从0到1映射到0到最大牵引力
-            control_force = action.item() * traction_force
+        action_value = action.item()
+        
+        # === 智能约束逻辑 ===
+        # 1. 预防性限速约束：当接近限速时，逐渐限制牵引动作
+        if current_v > current_speed_limit_mps * 0.90:  # 接近限速90%时开始预防
+            speed_ratio = (current_v - current_speed_limit_mps * 0.90) / (current_speed_limit_mps * 0.10)
+            if action_value > 0:  # 只限制牵引动作
+                # 逐渐减少牵引力，当接近限速时牵引力接近0
+                action_value = action_value * max(0.0, 1.0 - speed_ratio)
+        
+        # 2. 智能终点减速：基于物理公式计算安全速度
+        if remaining_distance < 30000:  # 离终点不足30km时开始考虑减速
+            # 基于安全制动距离计算最大安全速度（假设平均制动减速度2.0 m/s²）
+            safe_decel = 2.0
+            max_safe_speed = np.sqrt(2 * safe_decel * remaining_distance)
+            
+            if current_v > max_safe_speed * 0.8:  # 当超过安全速度的80%时
+                speed_safety_ratio = (current_v - max_safe_speed * 0.8) / (max_safe_speed * 0.2)
+                if action_value > 0:  # 限制牵引
+                    action_value = action_value * max(0.0, 1.0 - speed_safety_ratio)
+                elif current_v > max_safe_speed:  # 超过安全速度时鼓励制动
+                    action_value = min(-0.3, action_value)  # 至少施加30%制动
+        
+        # 3. 最终动作映射
+        if action_value >= 0:
+            # 牵引：使用平方根映射，让小的正动作也能有较大的牵引力
+            normalized_action = np.sqrt(action_value)
+            control_force = normalized_action * traction_force
         else:
-            # 制动：action从-1到0映射到最大制动力到0
-            control_force = action.item() * abs(braking_force)
+            # 制动：使用平方映射，让制动更加渐进
+            normalized_action = -((-action_value) ** 2)
+            control_force = normalized_action * abs(braking_force)
+            
         return control_force
 
     def _ultra_fast_observation(self) -> np.ndarray:
-        """极速观测构建，使用归一化的观测值"""
-        obs = self._obs_template.copy()
+        """极速观测构建，使用改进的8维观测值"""
+        obs = np.zeros(8, dtype=np.float32)  # 修改为8维
 
         # 归一化观测值，避免数值过大
-        obs[0] = min(self.current_v_mps * 3.6 / 305, 1.0)  # 当前速度 (0-1)
-        obs[1] = self.left_s_m / self.total_distance      # 剩余距离 (0-1)
-        obs[2] = (self.target_time - self.current_t_s) / self.target_time  # 剩余时间 (0-1)
-
-        # 新增：目标/限速的归一化（使用线路限速而非能力曲线，以便形成可学的老师信号）
+        obs[0] = min(self.current_v_mps * 3.6 / 350, 1.0)  # 当前速度 (0-1)
+        obs[1] = (self.current_s_m - self.start_s_m) / self.total_distance  # 当前位置进度 (0-1)
+        obs[2] = self.left_s_m / self.total_distance      # 剩余距离 (1-0)
+        obs[3] = min(self.current_t_s / self.target_time, 1.0)  # 当前时间进度 (0-1)
+        obs[4] = max((self.target_time - self.current_t_s) / self.target_time, 0.0)  # 剩余时间 (1-0)
+        
+        # 新增：目标速度的归一化（使用线路限速而非能力曲线，以便形成可学的老师信号）
         speed_limit_kmh = float(self.line_speed_limits[self._current_line_idx]) if self._current_line_idx < len(self.line_speed_limits) else float(self.line_speed_limits[-1])
-        obs[3] = min(speed_limit_kmh / 305.0, 1.0)
-
-        # obs[0] = min(self.current_v_mps * 3.6 / 400.0, 1.0)  # 速度归一化到0-1 (km/h/400)
-        # obs[1] = (self.current_s_m - self.start_s_m) / self.total_distance  # 位置归一化到0-1
-        # obs[2] = self.left_s_m / self.total_distance  # 剩余距离归一化到0-1
-        # obs[3] = self.current_t_s / self.target_time  # 时间归一化到0-1
-        # obs[4] = (self.target_time - self.current_t_s) / 1000.0  # 剩余时间归一化
-        # obs[5] = self.line_speed_limits[self._current_line_idx] / 400.0  # 限速归一化
-        # obs[6] = self.line_gradients[self._current_line_idx]  # 坡度保持原值
-        # obs[7] = min(self.line_curve_radius[self._current_line_idx] / 10000.0, 1.0)  # 曲线半径归一化
+        obs[5] = min(speed_limit_kmh / 350.0, 1.0)  # 当前限速归一化
+        
+        # 新增：目标速度（基于时间表计算）
+        remaining_distance = self.left_s_m
+        remaining_time = max(self.target_time - self.current_t_s, 1.0)
+        target_speed_mps = min(remaining_distance / remaining_time, speed_limit_kmh / 3.6)
+        
+        # 新增：考虑终点减速约束
+        if remaining_distance < 50000:  # 离终点不足50km时
+            # 计算安全减速所需的目标速度
+            safe_decel_speed = max(0.0, remaining_distance / 10000.0 * 50.0)  # 线性减速到0
+            target_speed_mps = min(target_speed_mps, safe_decel_speed)
+        
+        obs[6] = min(target_speed_mps * 3.6 / 350.0, 1.0)  # 目标速度归一化
+        
+        # 新增：时间压力指标 (-1 到 1，负值表示提前，正值表示延迟)
+        expected_progress = (self.current_s_m - self.start_s_m) / self.total_distance
+        expected_time = self.target_time * expected_progress
+        time_pressure = (self.current_t_s - expected_time) / (self.target_time * 0.1)  # 归一化到时刻表的10%
+        obs[7] = np.clip(time_pressure, -1.0, 1.0)
 
         return obs
 
@@ -855,7 +938,8 @@ class HighSpeedTrainEnv(gym.Env):
             '当前时间 (s)': self.current_t_s,
             '剩余时间 (s) ': self.target_time - self.current_t_s,
             '当前控制力 (kN)': self.current_control_force,
-            '当前最大能力曲线(m/s)':self.max_capability_curves_mps
+            '当前最大能力曲线(m/s)': self.max_capability_curves_mps,
+            '当前限速 (km/h)': float(self.line_speed_limits[self._current_line_idx])  # 新增
         }
 
     def ultra_fast_trajectory_log(self):
@@ -883,12 +967,13 @@ class HighSpeedTrainEnv(gym.Env):
         """记录每一步的详细数据用于后续分析。"""
         # 实现细节：将当前步的重要数据存入 self.trajectory_data 列表。
         delta_step_data = {
-            '当前速度 (m/s)': self.current_v_mps,  # 当前速度 (m/s)
-            '当前位置 (m)': self.current_s_m,  # 当前位置 (m)
-            '当前时间 (s)': self.current_t_s,  # 当前时间 (s)
-            '当前控制力 (kN)': self.current_control_force,  # 当前控制力 (kN)
+            '当前速度 (m/s)': float(self.current_v_mps),  # 当前速度 (m/s)
+            '当前位置 (m)': float(self.current_s_m),  # 当前位置 (m)
+            '当前时间 (s)': float(self.current_t_s),  # 当前时间 (s)
+            '当前控制力 (kN)': float(self.current_control_force),  # 当前控制力 (kN)
         }
-        self.trajectory_data.append(delta_step_data)
+        if self.trajectory_data is not None:
+            self.trajectory_data.append(delta_step_data)
 
     def _calculate_braking_distance(self, current_speed: float, max_braking: float) -> float:
         """
@@ -998,7 +1083,7 @@ class HighSpeedTrainEnv(gym.Env):
             current_energy = max(0, current_energy)  # 能量不能为负
             current_speed = np.sqrt(2 * current_energy)
 
-            # 严格限速约束：如果超过限速，强制减速
+            # 最大能力曲线必须遵守限速约束（这是物理约束，不是学习约束）
             if speed_limit_mps > 0 and current_speed > speed_limit_mps:
                 current_speed = speed_limit_mps
                 current_energy = 0.5 * current_speed ** 2
@@ -1013,7 +1098,7 @@ class HighSpeedTrainEnv(gym.Env):
 
         return self.distance_grid, speeds, forces
 
-    def plot_capability_curve(self, save_path: str = None):
+    def plot_capability_curve(self, save_path: Optional[str] = None):
         """
         绘制最大能力曲线
 
@@ -1031,7 +1116,7 @@ class HighSpeedTrainEnv(gym.Env):
         axes[0].plot(distances / 1000, speeds * 3.6, 'b-', linewidth=2, label='最大能力速度')
 
         # 添加限速线
-        speed_limits_interp = np.interp(distances, self.line_distances, self.line_speed_limits)
+        speed_limits_interp = np.interp(distances, np.array(self.line_distances, dtype=float), np.array(self.line_speed_limits, dtype=float))
         axes[0].plot(distances / 1000, speed_limits_interp, 'r--', linewidth=1, label='线路限速')
 
         axes[0].set_xlabel('距离 (km)')
