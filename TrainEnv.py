@@ -165,8 +165,8 @@ def fast_step_dynamics_numba(current_v, current_E, current_s, control_force,
 
     # 时间计算
     avg_v = (current_v + next_v) / 2
-    if avg_v <= :
-        dt = delta_step / 1
+    if avg_v <= 0.1:
+        dt = delta_step / 0.1
     else:
         dt = delta_step / avg_v
 
@@ -197,7 +197,7 @@ def fast_reward_calculation_numba(current_v, current_t, target_time, punctuality
     # 3. 终点奖励
     if is_terminated:
         # 准点性奖励
-        time_error = abs(current_t - target_time)/target_time
+        time_error = 100*abs(current_t - target_time)/target_time
         print("current_t",current_t)
         print("target_time",target_time)
         if time_error < 30:  # 30秒内算准点
@@ -209,12 +209,12 @@ def fast_reward_calculation_numba(current_v, current_t, target_time, punctuality
 
     # 4. 平稳性惩罚（减小系数）
     force_change = abs(control_force - previous_control_force)/previous_control_force if previous_control_force > 0 else 0
-    reward -= 0.01 * force_change
+    reward -= 1 * force_change
 
     # 5. 超速惩罚
     if current_v > speed_limit_mps:
         overspeed_ratio = (current_v - speed_limit_mps) / speed_limit_mps if speed_limit_mps > 0 else 0
-        reward -= 10.0 * overspeed_ratio ** 2
+        reward -= 10 * overspeed_ratio ** 2
 
     return reward
 
@@ -256,7 +256,7 @@ class HighSpeedTrainEnv(gym.Env):
                  train_params_path: str,
                  line_params_path: str,
                  delta_step_length_m: float = 10,
-                 target_time_s: float = 9000,
+                 target_time_s: float = 12000,
                  start_time_s: float = 0.0,
                  start_s_m: float = 1225000,
                  start_v_mps: float = 1,

@@ -422,11 +422,11 @@ if __name__ == "__main__":
     print(max_steps)
     agent = SACAgent(env=env, lr=8e-4, gamma=0.88, tau=0.008, hidden_size=[256, 256], seed=42)
 
-    # agent.train(max_episodes=1000, max_steps=max_steps, start_steps=1000, batch_size=256, update_every=200, num_updates=8)
-    # env.close()
+    agent.train(max_episodes=20000, max_steps=max_steps, start_steps=1000, batch_size=256, update_every=200, num_updates=8)
+    env.close()
 
-    agent.load_model("pendulum_sac_train_final.pth")
-    agent.test()
+    # agent.load_model("pendulum_sac_train_final.pth")
+    # agent.test()
 
     # env = gym.make('Pendulum-v1')
     # agent = SACAgent(env=env, lr=3e-4, gamma=0.99, tau=0.005, hidden_size=[256, 256], seed=42)
