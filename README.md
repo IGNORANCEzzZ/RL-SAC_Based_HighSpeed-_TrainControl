@@ -53,9 +53,9 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
 
 ## Initialization Phase
 
-1. Initialize policy network (Actor) $\pi_{\theta}$ with parameters $\theta$
-2. Initialize two Q-networks (Critics) $Q_{\phi_1}$, $Q_{\phi_2}$ with parameters $\phi_1, \phi_2$
-3. Initialize two target Q-networks $Q_{\phi'_1}$, $Q_{\phi'_2}$ with same parameters: $\phi'_1 \leftarrow \phi_1$, $\phi'_2 \leftarrow \phi_2$
+1. Initialize policy network (Actor) $ \pi_{\theta}$ with parameters $\theta $
+2. Initialize two Q-networks (Critics) $ Q_{\phi_1} $, $ Q_{\phi_2} $ with parameters $\phi_1, \phi_2$
+3. Initialize two target Q-networks $ Q_{\phi'_1}$, $Q_{\phi'_2}$ with same parameters: $\phi'_1 \leftarrow \phi_1$, $\phi'_2 \leftarrow \phi_2$
 4. Initialize experience replay buffer $\mathcal{D}$
 5. Initialize learnable log temperature parameter $\log \alpha$
 6. Define target entropy $\mathcal{H}_{target}$ (typically -action_dimension)
