@@ -432,11 +432,11 @@ if __name__ == "__main__":
     # 修复关键训练参数
     agent = SACAgent(env=env, lr=1e-4, gamma=0.99, tau=0.005, hidden_size=[512, 512], seed=42)
 
-    agent.train(max_episodes=500, max_steps=max_steps, start_steps=3000, batch_size=256, update_every=1, num_updates=1)
-    env.close()
+    # agent.train(max_episodes=10000  , max_steps=max_steps, start_steps=3000, batch_size=256, update_every=1, num_updates=1)
+    # env.close()
 
-    # agent.load_model("pendulum_sac_train_final.pth")
-    # agent.test()
+    agent.load_model("pendulum_sac_train_final.pth")
+    agent.test()
 
     # env = gym.make('Pendulum-v1')
     # agent = SACAgent(env=env, lr=3e-4, gamma=0.99, tau=0.005, hidden_size=[256, 256], seed=42)
