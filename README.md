@@ -53,8 +53,8 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
 
 ## Initialization Phase
 
-1. Initialize policy network (Actor) $ \pi_{\theta}$ with parameters $\theta $
-2. Initialize two Q-networks (Critics) $ Q_{\phi_1} $, $ Q_{\phi_2} $ with parameters $\phi_1, \phi_2$
+1. Initialize policy network (Actor) $\pi_{\theta}$ with parameters $\theta $
+2. Initialize two Q-networks (Critics) $Q_{\phi_1}$, $Q_{\phi_2}$ with parameters $\phi_1,\phi_2$
 3. Initialize two target Q-networks $ Q_{\phi'_1}$, $Q_{\phi'_2}$ with same parameters: $\phi'_1 \leftarrow \phi_1$, $\phi'_2 \leftarrow \phi_2$
 4. Initialize experience replay buffer $\mathcal{D}$
 5. Initialize learnable log temperature parameter $\log \alpha$
@@ -94,21 +94,25 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
         - Sample next actions and log probabilities from current policy: $a'_j \sim \pi_{\theta}(\cdot|s'_j), \log\pi_{\theta}(a'_j|s'_j)$
 
         - Compute Q-values for next states using **target Q-networks** with clipped double Q-learning:
+
         $$
         Q'_{target}(s'_j, a'_j) = \min(Q_{\phi'_1}(s'_j, a'_j), Q_{\phi'_2}(s'_j, a'_j))
         $$
 
         - Compute final target $y_j$ with entropy term:
+
         $$
         y_j = r_j + \gamma (1-d_j) (Q'_{target}(s'_j, a'_j) - \alpha \log\pi_{\theta}(a'_j|s'_j))
         $$
 
         ii. **Compute current Q-values** using experience buffer actions:
+
         $$
         Q_{\phi_1}(s_j, a_j), Q_{\phi_2}(s_j, a_j)
         $$
 
         iii. **Compute Critic loss** using Mean Squared Error (MSE):
+
         $$
         L_{\text{critic}} = \frac{1}{N}\sum_{j=1}^{N} \left( (Q_{\phi_1}(s_j, a_j) - y_j)^2 + (Q_{\phi_2}(s_j, a_j) - y_j)^2 \right)
         $$
@@ -122,11 +126,13 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
         - Sample new actions from current policy for states $s_j$: $\tilde{a}_j \sim \pi_{\theta}(\cdot|s_j)$ with $\log\pi_{\theta}(\tilde{a}_j|s_j)$ (with gradients)
 
         - Compute Q-values for these actions using current **main Q-networks**:
+
         $$
         Q_{\pi}(s_j, \tilde{a}_j) = \min(Q_{\phi_1}(s_j, \tilde{a}_j), Q_{\phi_2}(s_j, \tilde{a}_j))
         $$
 
         - Actor loss (negative of soft Q-value to maximize):
+
         $$
         L_{\text{actor}} = \frac{1}{N}\sum_{j=1}^{N} (\alpha \log\pi_{\theta}(\tilde{a}_j|s_j) - Q_{\pi}(s_j, \tilde{a}_j))
         $$
@@ -134,6 +140,7 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
         ii. **Update Actor parameters** via gradient descent on $L_{\text{actor}}$
 
         iii. **Compute Alpha loss**:
+
         $$
         L_{\alpha} = \frac{1}{N}\sum_{j=1}^{N} (-\log\alpha (\log\pi_{\theta}(\tilde{a}_j|s_j) + \mathcal{H}_{target}))
         $$
@@ -141,9 +148,11 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
         iv. **Update Alpha parameters** via gradient descent on $L_{\alpha}$
 
     4. **--- Soft Update Target Q-Networks ---**
+
         $$
         \phi'_1 \leftarrow \tau \phi_1 + (1-\tau) \phi'_1
         $$
+
         $$
         \phi'_2 \leftarrow \tau \phi_2 + (1-\tau) \phi'_2
         $$
@@ -191,11 +200,13 @@ In the code implementation, the SAC algorithm consists of **5 neural networks** 
 The Critic networks learn to estimate soft Q-values using a modified Bellman equation:
 
 **Target Value Computation:**
+
 $$
 y = r + \gamma (1-d) \left( \min_{i=1,2} Q_{\phi'_i}(s', a') - \alpha \log\pi_{\theta}(a'|s') \right) \quad \text{where } a' \sim \pi_{\theta}(\cdot|s')
 $$
 
 **Critic Loss (MSE):**
+
 $$
 L(\phi_1, \phi_2) = \mathbb{E}_{(s,a,r,s',d)\sim\mathcal{D}} \left[ (Q_{\phi_1}(s,a) - y)^2 + (Q_{\phi_2}(s,a) - y)^2 \right]
 $$
@@ -205,11 +216,13 @@ $$
 The Actor maximizes soft Q-values:
 
 **Objective (to maximize):**
+
 $$
 J(\theta) = \mathbb{E}_{s\sim\mathcal{D}, \tilde{a}\sim\pi_{\theta}} \left[ \min_{i=1,2} Q_{\phi_i}(s, \tilde{a}) - \alpha \log\pi_{\theta}(\tilde{a}|s) \right]
 $$
 
 **Actor Loss (to minimize):**
+
 $$
 L(\theta) = \mathbb{E}_{s\sim\mathcal{D}, \tilde{a}\sim\pi_{\theta}} \left[ \alpha \log\pi_{\theta}(\tilde{a}|s) - \min_{i=1,2} Q_{\phi_i}(s, \tilde{a}) \right]
 $$
@@ -234,7 +247,9 @@ Why do we use buffer actions when computing current Q-values for critic network 
 
 #### 1.1.1 Definition of Action-Value Function - The Essential Definition of Action-Value Function $Q^\pi(s,a)$
 
-$$Q^\pi(s,a) = \mathbb{E}_{\pi} \left[ \sum_{t=0}^{\infty} \gamma^t r_t \mid s_0=s, a_0=a \right]$$
+$$
+Q^\pi(s,a) = \mathbb{E}_{\pi} \left[ \sum_{t=0}^{\infty} \gamma^t r_t \mid s_0=s, a_0=a \right]
+$$
 
 Execute a **deterministic action a** (can be any action) in state s, then continue following policy π from the next step onwards, calculating the expected cumulative reward of the entire process.
 
@@ -248,7 +263,9 @@ According to the Q-function definition, $Q^\pi(s,a)$ must be able to evaluate th
 
 According to the Bellman equation:
 
-$$Q^\pi(s,a) = r(s,a) + \gamma \mathbb{E}_{a' \sim \pi(\cdot|s')} [Q^\pi(s',a')]$$
+$$
+Q^\pi(s,a) = r(s,a) + \gamma \mathbb{E}_{a' \sim \pi(\cdot|s')} [Q^\pi(s',a')]
+$$
 
 The first step executes the deterministic action a from the buffer, obtaining reward r and next state s'. From the second step onwards, according to the definition, this part of value must be obtained by **following the current policy $\pi$**, therefore $a' \sim \pi(\cdot|s')$ must be sampled from the current policy.
 
@@ -256,7 +273,9 @@ The first step executes the deterministic action a from the buffer, obtaining re
 
 Actor is not learning the Q-function, but optimizing the policy itself. Its objective is to maximize:
 
-$$J(\pi) = \mathbb{E}_{s \sim D, a \sim \pi(\cdot|s)} [Q(s,a) - \alpha \log \pi(a|s)]$$
+$$
+J(\pi) = \mathbb{E}_{s \sim D, a \sim \pi(\cdot|s)} [Q(s,a) - \alpha \log \pi(a|s)]
+$$
 
 The actions here must be sampled from current policy π because:
 
@@ -298,12 +317,14 @@ This "lagged Critic" directly leads to mismatch:
     Is buried in studying historical archives (experience replay), with its output $V_w(s)$ approaching the value function of the **past** policy $\pi_{\theta_{old}}$ that no longer exists.
 
 3. Finally, when Actor computes its vital gradient signal, the advantage function estimate becomes:
+
     $$
     A_{biased} \approx r_t + \gamma V^{\pi_{\theta_{old}}}(s_{t+1}) - V^{\pi_{\theta_{old}}}(s_t)
     $$
     This $A_{biased}$ is actually evaluating the behavior quality of **old policy $\pi_{\theta_{old}}$**.
 
 4. When Actor uses this **advantage signal based on old policy values** to update **new policy's log probabilities**, the core contradiction emerges:
+
     $$
     \nabla_{\theta} J(\theta) \approx \mathbb{E} \left[ \nabla_{\theta} \log \pi_{\theta}(a_t|s_t) \cdot A^{\pi_{\theta_{old}}}(s_t, a_t) \right]
     $$
@@ -322,16 +343,24 @@ A2C cannot be Off-Policy, not merely because the abstract policy gradient theore
 ### 3.2 Mathematical Essence: Fundamental Difference Between Two Gradient Computations
 
 1. SAC Actor's objective function:
-    $$J(\pi_\theta) = \mathbb{E}_{s \sim \mathcal{D}} \left[ \mathbb{E}_{a \sim \pi_\theta(\cdot|s)} [Q(s,a)] \right]$$
+
+    $$
+    J(\pi_\theta) = \mathbb{E}_{s \sim \mathcal{D}} \left[ \mathbb{E}_{a \sim \pi_\theta(\cdot|s)} [Q(s,a)] \right]
+    $$
 
     Corresponding gradient:
-    $$\nabla_\theta J(\pi_\theta) = \nabla_\theta \mathbb{E}_{s \sim \mathcal{D}} \left[ \mathbb{E}_{a \sim \pi_\theta(\cdot|s)} [Q(s,a)] \right]$$
+
+    $$
+    \nabla_\theta J(\pi_\theta) = \nabla_\theta \mathbb{E}_{s \sim \mathcal{D}} \left[ \mathbb{E}_{a \sim \pi_\theta(\cdot|s)} [Q(s,a)] \right]
+    $$
 
     **Problem**: In the inner expectation $\mathbb{E}_{a \sim \pi_\theta(\cdot|s)} [Q(s,a)]$, action $a$ is randomly sampled from distribution $\pi_\theta(\cdot|s)$, and this sampling operation is non-differentiable in standard automatic differentiation frameworks!
 
 2. A2C gradient (no reparameterization needed):
     A2C policy gradient:
-    $$\nabla_\theta J(\pi_\theta) = \mathbb{E}_{a \sim \pi_\theta(\cdot|s)} \left[ \nabla_\theta \log \pi_\theta(a|s) \cdot A(s,a) \right]$$
+    $$
+    \nabla_\theta J(\pi_\theta) = \mathbb{E}_{a \sim \pi_\theta(\cdot|s)} \left[ \nabla_\theta \log \pi_\theta(a|s) \cdot A(s,a) \right]
+    $$
 
     **Key**: Here the gradient is $\nabla_\theta \log \pi_\theta(a|s)$ — it's a **deterministic function**! Given state s and action a, $\log \pi_\theta(a|s)$ is a differentiable function of parameters $\theta$, completely independent of how a was sampled.
 
@@ -342,13 +371,22 @@ A2C cannot be Off-Policy, not merely because the abstract policy gradient theore
 ### 3.3 Mathematical Principle of Reparameterization
 
 #### 3.3.1 Original Sampling (Non-differentiable):
-$$a \sim \mathcal{N}(\mu_\theta(s), \sigma_\theta(s))$$
+
+$$
+a \sim \mathcal{N}(\mu_\theta(s), \sigma_\theta(s))
+$$
 
 Here, randomness directly acts on output a, preventing gradient backpropagation.
 
 #### 3.3.2 Reparameterized (Differentiable):
-$$\epsilon \sim \mathcal{N}(0, I)$$
-$$a = \mu_\theta(s) + \sigma_\theta(s) \cdot \epsilon$$
+
+$$
+\epsilon \sim \mathcal{N}(0, I)
+$$
+
+$$
+a = \mu_\theta(s) + \sigma_\theta(s) \cdot \epsilon
+$$
 
 **Key Changes**:
 - Randomness moved to input side ($\epsilon$), independent of parameters $\theta$
@@ -356,7 +394,10 @@ $$a = \mu_\theta(s) + \sigma_\theta(s) \cdot \epsilon$$
 - Gradients can flow normally through chain rule: $\nabla_\theta a = \nabla_\theta \mu_\theta(s) + \nabla_\theta \sigma_\theta(s) \cdot \epsilon$
 
 Thus, we can compute:
-$$\nabla_\theta Q(s, a) = \nabla_a Q(s, a) \cdot \nabla_\theta a$$
+
+$$
+\nabla_\theta Q(s, a) = \nabla_a Q(s, a) \cdot \nabla_\theta a
+$$
 
 ### 3.4 Code Implementation Details (Based on This Project)
 
