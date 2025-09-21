@@ -376,10 +376,11 @@ if __name__ == "__main__":
         torch.cuda.manual_seed(seed)
     env=gym.make('Pendulum-v1')
     agent = A2CAgent(env=env, lr=3e-4, gamma=0.99,value_loss_coef = 0.5, entropy_coef= 0.01, hidden_size=[128,64], max_episodes=3000, seed=42,n_steps=10,max_steps =200)
-    # agent.load_model("pendulum_a2c_final.pth")
-    # agent.entire_train()
     agent.load_model("pendulum_a2c_final.pth")
-    agent.test()
+    agent.entire_train()
+
+    # agent.load_model("pendulum_a2c_final.pth")
+    # agent.test()
 
 
 
