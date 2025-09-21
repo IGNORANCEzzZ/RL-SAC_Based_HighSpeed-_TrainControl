@@ -93,15 +93,15 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
 
         - Sample next actions and log probabilities from current policy: 
 
-$$
-a'_j \sim \pi_{\theta}(\cdot|s'_j), \log\pi_{\theta}(a'_j|s'_j)
-$$
+        $$
+        a'_j \sim \pi_{\theta}(\cdot|s'_j), \log\pi_{\theta}(a'_j|s'_j)
+        $$
 
         - Compute Q-values for next states using **target Q-networks** with clipped double Q-learning:
 
-$$
-Q'_{target}(s'_j, a'_j) = \min(Q_{\phi'_1}(s'_j, a'_j), Q_{\phi'_2}(s'_j, a'_j))
-$$
+        $$
+        Q'_{target}(s'_j, a'_j) = \min(Q_{\phi'_1}(s'_j, a'_j), Q_{\phi'_2}(s'_j, a'_j))
+        $$
 
         - Compute final target $y_j$ with entropy term:
 
