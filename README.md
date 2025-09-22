@@ -123,7 +123,7 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
 
         iv. **Update Critic parameters** via gradient descent on $L_{\text{critic}}$
 
-    3. **--- Update Actor Network and Temperature $\alpha$ ---**
+    1. **--- Update Actor Network and Temperature $\alpha$ ---**
 
         i. **Compute Actor loss**:
 
@@ -151,7 +151,7 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
 
         iv. **Update Alpha parameters** via gradient descent on $L_{\alpha}$
 
-    4. **--- Soft Update Target Q-Networks ---**
+    2. **--- Soft Update Target Q-Networks ---**
 
         $$
         \phi'_1 \leftarrow \tau \phi_1 + (1-\tau) \phi'_1
@@ -316,20 +316,20 @@ The correctness of this formula relies on two key consistencies:
 
 This "lagged Critic" directly leads to mismatch:
 
-**Actor ($\pi_{\theta}$)**:
+#### 2.3.1 Actor ($\pi_{\theta}$):
 
 Is working hard to evolve forward, urgently needing to know its **current** average performance $V^{\pi_{\theta}}$ to compute the correct advantage function $A^{\pi_{\theta}}$ for guiding the next evolution step.
 
-**Critic ($V_w$)**:
+#### 2.3.2 Critic ($V_w$):
 
 Is buried in studying historical archives (experience replay), with its output $V_w(s)$ approaching the value function of the **past** policy $\pi_{\theta_{old}}$ that no longer exists.
 
-**Finally, when Actor computes its vital gradient signal, the advantage function estimate becomes**:
+#### 2.3.2: Finally, when Actor computes its vital gradient signal, the advantage function estimate becomes:
 
 $$
 A_{biased} \approx r_t + \gamma V^{\pi_{\theta_{old}}}(s_{t+1}) - V^{\pi_{\theta_{old}}}(s_t)
-
 $$
+
 This $A_{biased}$ is actually evaluating the behavior quality of **old policy $\pi_{\theta_{old}}$**.
 
 **When Actor uses this **advantage signal based on old policy values** to update **new policy's log probabilities**, the core contradiction emerges:**
@@ -348,7 +348,13 @@ A2C cannot be Off-Policy, not merely because the abstract policy gradient theore
 
 ### 3.1 Why SAC Needs Reparameterization
 
-SAC needs reparameterization because its Actor loss is $\mathbb{E}_{a \sim \pi_\theta} [Q(s,a)]$, where gradients must flow back through random sampling operations to policy parameters $\theta$ ; while A2C doesn't need reparameterization because its gradient form is $\nabla_\theta \log \pi_\theta(a|s)$, where gradients don't depend on how action a is sampled, only on the probability density given a
+SAC needs reparameterization because its Actor loss is 
+
+$$
+\mathbb{E}_{a \sim \pi_\theta} [Q(s,a)]
+$$
+
+where gradients must flow back through random sampling operations to policy parameters $\theta$ ; while A2C doesn't need reparameterization because its gradient form is $\nabla_\theta \log \pi_\theta(a|s)$, where gradients don't depend on how action a is sampled, only on the probability density given a
 
 ### 3.2 Mathematical Essence: Fundamental Difference Between Two Gradient Computations
 
@@ -369,6 +375,7 @@ $$
 #### 3.2.2 A2C gradient (no reparameterization needed):
 
 A2C policy gradient:
+
 $$
 \nabla_\theta J(\pi_\theta) = \mathbb{E}_{a \sim \pi_\theta(\cdot|s)} \left[ \nabla_\theta \log \pi_\theta(a|s) \cdot A(s,a) \right]
 $$
