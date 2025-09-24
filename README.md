@@ -65,105 +65,107 @@ pip install torch numpy pandas gymnasium matplotlib scipy numba
 
 **FOR** `episode` = 1 **TO** `max_episodes` **DO**:
 
-1. Reset environment and get initial state $s$
+### 1.Reset environment and get initial state $s$
 
-2. **FOR** `step` = 1 **TO** `max_steps` **DO**:
+### 2.**FOR** `step` = 1 **TO** `max_steps` **DO**:
 
-    a. **IF** `total_steps` < `start_steps`:
-    - Randomly sample action from action space: a = self.env.action_space.sample()
+#### 2.1. **IF** `total_steps` < `start_steps`:
 
-    b. **ELSE**:
-    - Sample action from current policy: $a \sim \pi_{\theta}(\cdot|s)$ (via `select_action` function)
+Randomly sample action from action space: a = self.env.action_space.sample()
 
-    c. Execute action $a$ in environment, obtain next state $s'$, reward $r$, and done flag $d$
+#### 2.2 ELSE:
 
-    d. Store transition tuple $(s, a, r, s', d)$ in replay buffer $\mathcal{D}$
+Sample action from current policy: $a \sim \pi_{\theta}(\cdot|s)$ (via `select_action` function)
 
-    e. Update current state: $s \leftarrow s'$
+#### 2.3. Execute action $a$ in environment, obtain next state $s'$, reward $r$, and done flag $d$
 
-    f. `total_steps` $\leftarrow$ `total_steps` + 1
+#### 2.4. Store transition tuple $(s, a, r, s', d)$ in replay buffer $\mathcal{D}$
 
-    g. **IF** `total_steps` > `start_steps`:
+#### 2.5. Update current state: $s \leftarrow s'$
 
-    1. Randomly sample a minibatch from $\mathcal{D}$ : $\{(s_j, a_j, r_j, s'_j, d_j)\}_{j=1}^{N}$
- 
-    2. **--- Update Critic Networks ---**
+#### 2.6. `total_steps` $\leftarrow$ `total_steps` + 1
 
-        i. **Compute target values y** (without gradients):
+#### 2.7. **IF** `total_steps` > `start_steps`:
 
-        - Sample next actions and log probabilities from current policy: 
+##### 2.7.1 Randomly sample a minibatch from $\mathcal{D}$ : $\{(s_j, a_j, r_j, s'_j, d_j)\}_{j=1}^{N}$
 
-        $$
-        a'_j \sim \pi_{\theta}(\cdot|s'_j), \log\pi_{\theta}(a'_j|s'_j)
-        $$
+##### 2.7.2. Update Critic Networks
 
-        - Compute Q-values for next states using **target Q-networks** with clipped double Q-learning:
+###### 2.7.2.1 Compute target values y(without gradients):
 
-        $$
-        Q'_{target}(s'_j, a'_j) = \min(Q_{\phi'_1}(s'_j, a'_j), Q_{\phi'_2}(s'_j, a'_j))
-        $$
+1. Sample next actions and log probabilities from current policy: 
 
-        - Compute final target $y_j$ with entropy term:
+$$
+a'_j \sim \pi_{\theta}(\cdot|s'_j), \log\pi_{\theta}(a'_j|s'_j)
+$$
 
-        $$
-        y_j = r_j + \gamma (1-d_j) (Q'_{target}(s'_j, a'_j) - \alpha \log\pi_{\theta}(a'_j|s'_j))
-        $$
+2. Compute Q-values for next states using **target Q-networks** with clipped double Q-learning:
 
-        ii. **Compute current Q-values** using experience buffer actions:
+$$
+Q'_{target}(s'_j, a'_j) = \min(Q_{\phi'_1}(s'_j, a'_j), Q_{\phi'_2}(s'_j, a'_j))
+$$
 
-        $$
-        Q_{\phi_1}(s_j, a_j), Q_{\phi_2}(s_j, a_j)
-        $$
+3. Compute final target $y_j$ with entropy term:
 
-        iii. **Compute Critic loss** using Mean Squared Error (MSE):
+$$
+y_j = r_j + \gamma (1-d_j) (Q'_{target}(s'_j, a'_j) - \alpha \log\pi_{\theta}(a'_j|s'_j))
+$$
 
-        $$
-        L_{\text{critic}} = \frac{1}{N}\sum_{j=1}^{N} \left( (Q_{\phi_1}(s_j, a_j) - y_j)^2 + (Q_{\phi_2}(s_j, a_j) - y_j)^2 \right)
-        $$
+###### 2.7.2.2. **Compute current Q-values** using experience buffer actions:
 
-        iv. **Update Critic parameters** via gradient descent on $L_{\text{critic}}$
+$$
+Q_{\phi_1}(s_j, a_j), Q_{\phi_2}(s_j, a_j)
+$$
 
-    1. **--- Update Actor Network and Temperature $\alpha$ ---**
+###### 2.7.2.3. **Compute Critic loss** using Mean Squared Error (MSE):
 
-        i. **Compute Actor loss**:
+$$
+L_{\text{critic}} = \frac{1}{N}\sum_{j=1}^{N} \left( (Q_{\phi_1}(s_j, a_j) - y_j)^2 + (Q_{\phi_2}(s_j, a_j) - y_j)^2 \right)
+$$
 
-        - Sample new actions from current policy for states $s_j$: $\tilde{a}_j \sim \pi_{\theta}(\cdot|s_j)$ with $\log\pi_{\theta}(\tilde{a}_j|s_j)$ (with gradients)
+###### 2.7.2.4. **Update Critic parameters** via gradient descent on $L_{\text{critic}}$
 
-        - Compute Q-values for these actions using current **main Q-networks**:
+##### 2.7.3. Update Actor Network and Temperature $\alpha$
 
-        $$
-        Q_{\pi}(s_j, \tilde{a}_j) = \min(Q_{\phi_1}(s_j, \tilde{a}_j), Q_{\phi_2}(s_j, \tilde{a}_j))
-        $$
+###### 2.7.3.1 **Compute Actor loss**:
 
-        - Actor loss (negative of soft Q-value to maximize):
+1. Sample new actions from current policy for states $s_j$: $\tilde{a}_j \sim \pi_{\theta}(\cdot|s_j)$ with $\log\pi_{\theta}(\tilde{a}_j|s_j)$ (with gradients)
 
-        $$
-        L_{\text{actor}} = \frac{1}{N}\sum_{j=1}^{N} (\alpha \log\pi_{\theta}(\tilde{a}_j|s_j) - Q_{\pi}(s_j, \tilde{a}_j))
-        $$
+2. Compute Q-values for these actions using current **main Q-networks**:
 
-        ii. **Update Actor parameters** via gradient descent on $L_{\text{actor}}$
+$$
+Q_{\pi}(s_j, \tilde{a}_j) = \min(Q_{\phi_1}(s_j, \tilde{a}_j), Q_{\phi_2}(s_j, \tilde{a}_j))
+$$
 
-        iii. **Compute Alpha loss**:
+3. Actor loss (negative of soft Q-value to maximize):
 
-        $$
-        L_{\alpha} = \frac{1}{N}\sum_{j=1}^{N} (-\log\alpha (\log\pi_{\theta}(\tilde{a}_j|s_j) + \mathcal{H}_{target}))
-        $$
+$$
+L_{\text{actor}} = \frac{1}{N}\sum_{j=1}^{N} (\alpha \log\pi_{\theta}(\tilde{a}_j|s_j) - Q_{\pi}(s_j, \tilde{a}_j))
+$$
 
-        iv. **Update Alpha parameters** via gradient descent on $L_{\alpha}$
+###### 2.7.3.2 update Actor parameters via gradient descent on $L_{\text{actor}}$
 
-    2. **--- Soft Update Target Q-Networks ---**
+###### 2.7.3.3. Compute Alpha loss:
 
-        $$
-        \phi'_1 \leftarrow \tau \phi_1 + (1-\tau) \phi'_1
-        $$
+$$
+L_{\alpha} = \frac{1}{N}\sum_{j=1}^{N} (-\log\alpha (\log\pi_{\theta}(\tilde{a}_j|s_j) + \mathcal{H}_{target}))
+$$
 
-        $$
-        \phi'_2 \leftarrow \tau \phi_2 + (1-\tau) \phi'_2
-        $$
+###### 2.7.3.4. **Update Alpha parameters** via gradient descent on $L_{\alpha}$
 
-    h. **IF** $d$ is `True` **THEN** **break**
+##### 2.7.4.  Soft Update Target Q-Networks
 
-    **END FOR**
+$$
+\phi'_1 \leftarrow \tau \phi_1 + (1-\tau) \phi'_1
+$$
+
+$$
+\phi'_2 \leftarrow \tau \phi_2 + (1-\tau) \phi'_2
+$$
+
+##### 2.7.5. **IF** $d$ is `True` **THEN** **break**##### END FOR
+
+**END FOR**
 
 **END FOR**
 
@@ -305,6 +307,7 @@ The correctness of this formula relies on two key consistencies:
 
 1. **A2C Critic's Correct Responsibility**:
     In standard On-Policy A2C, the Critic network (with parameters $w$) has the sole objective of learning the state value function $V^{\pi_{\theta}}(s)$ of the **current policy $\pi_{\theta}$**. Its learning depends on data generated by the **current policy**:
+
     $$
     V_w(s) \text{ aims to fit } \mathbb{E}_{a \sim \pi_{\theta}(\cdot|s), s' \sim P} [r(s,a) + \gamma V_w(s')]
     $$
