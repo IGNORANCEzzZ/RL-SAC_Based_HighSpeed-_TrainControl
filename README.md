@@ -87,7 +87,11 @@ Sample action from current policy: $a \sim \pi_{\theta}(\cdot|s)$ (via `select_a
 
 #### 2.7. **IF** `total_steps` > `start_steps`:
 
-##### 2.7.1 Randomly sample a minibatch from $\mathcal{D}$ : $\{(s_j, a_j, r_j, s'_j, d_j)\}_{j=1}^{N}$
+##### 2.7.1 Randomly sample a minibatch from $\mathcal{D}$ : 
+
+$$
+\{(s_j, a_j, r_j, s'_j, d_j)\}_{j=1}^{N}
+$$
 
 ##### 2.7.2. Update Critic Networks
 
@@ -129,7 +133,11 @@ $$
 
 ###### 2.7.3.1 **Compute Actor loss**:
 
-1. Sample new actions from current policy for states $s_j$: $\tilde{a}_j \sim \pi_{\theta}(\cdot|s_j)$ with $\log\pi_{\theta}(\tilde{a}_j|s_j)$ (with gradients)
+1. Sample new actions from current policy for states $s_j$: 
+$\tilde{a}_j \sim \pi_{\theta}(\cdot|s_j)$ 
+with 
+$\log\pi_{\theta}(\tilde{a}_j|s_j)$ 
+(with gradients)
 
 2. Compute Q-values for these actions using current **main Q-networks**:
 
